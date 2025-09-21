@@ -1,0 +1,673 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>System Breach — Ultra Cosmetic Simulator</title>
+
+  <!-- NOTE: PURELY COSMETIC. DOES NOT READ OR SEND FILES. -->
+  <link href="https://fonts.googleapis.com/css2?family=VT323&family=Fira+Code:wght@400;600&display=swap"
+    rel="stylesheet">
+
+  <style>
+    :root {
+      --bg-1: #020602;
+      --bg-2: #04210a;
+      --neon: #12ff3f;
+      --muted: #7fbf7f;
+      --accent: #ff3b3b;
+      --glass: rgba(255, 255, 255, 0.03);
+      --mono: 'VT323', monospace;
+      --code: 'Fira Code', monospace;
+    }
+
+    html,
+    body {
+      height: 100%;
+      margin: 0;
+      background: radial-gradient(ellipse at 20% 10%, rgba(0, 30, 10, 0.6), transparent 10%), linear-gradient(180deg, var(--bg-1), var(--bg-2));
+      color: var(--neon);
+      font-family: var(--code);
+      -webkit-font-smoothing: antialiased;
+      overflow: hidden;
+    }
+
+    /* full-screen noise overlay & scanlines */
+    .noise {
+      position: fixed;
+      inset: 0;
+      background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="6" height="6"><rect width="6" height="6" fill="%23000000" opacity="0"/><circle cx="1" cy="1" r="0.6" fill="%230b0b0b" opacity="0.06"/></svg>');
+      opacity: 0.18;
+      mix-blend-mode: overlay;
+      pointer-events: none;
+      z-index: 6;
+    }
+
+    .scanlines {
+      position: fixed;
+      inset: 0;
+      background: linear-gradient(transparent 92%, rgba(0, 0, 0, 0.06) 92%);
+      background-size: 100% 4px;
+      opacity: 0.16;
+      pointer-events: none;
+      z-index: 7;
+    }
+
+    /* container */
+    .shell {
+      position: relative;
+      z-index: 5;
+      width: min(1200px, 96vw);
+      height: min(760px, 90vh);
+      margin: 28px auto;
+      border-radius: 12px;
+      display: grid;
+      grid-template-columns: 1fr 360px;
+      gap: 12px;
+      padding: 14px;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.8);
+      border: 1px solid rgba(18, 255, 63, 0.06);
+      backdrop-filter: blur(4px);
+    }
+
+    .panel {
+      background: linear-gradient(180deg, rgba(0, 0, 0, 0.24), rgba(255, 255, 255, 0.02));
+      border-radius: 10px;
+      padding: 14px;
+      box-sizing: border-box;
+      border: 1px solid rgba(255, 255, 255, 0.02);
+      overflow: hidden;
+    }
+
+    /* main terminal */
+    .terminal {
+      font-family: var(--mono);
+      font-size: 16px;
+      line-height: 1.35;
+      color: var(--neon);
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .term-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .win-dots {
+      display: inline-flex;
+      gap: 6px;
+    }
+
+    .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.03);
+      box-shadow: inset 0 -2px rgba(0, 0, 0, 0.25);
+    }
+
+    .dot.r {
+      background: #2b2b2b
+    }
+
+    .dot.y {
+      background: #3b3b2b
+    }
+
+    .dot.g {
+      background: var(--neon)
+    }
+
+    /* huge, cinematic console area */
+    .console {
+      flex: 1 1 auto;
+      background: linear-gradient(180deg, rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.06));
+      border-radius: 8px;
+      padding: 12px;
+      overflow: auto;
+      box-shadow: inset 0 0 80px rgba(18, 255, 63, 0.02), 0 12px 40px rgba(0, 0, 0, 0.6);
+      position: relative;
+      border: 1px solid rgba(18, 255, 63, 0.03);
+    }
+
+    .console .line {
+      white-space: pre-wrap;
+      margin: 6px 0;
+      font-size: 15px;
+    }
+
+    .console .time {
+      color: var(--muted);
+      margin-right: 8px;
+      font-size: 13px;
+    }
+
+    /* blinking ellipsis */
+    .ellipsis {
+      display: inline-block;
+      width: 1.4ch;
+    }
+
+    /* ALERT overlay */
+    .alert {
+      position: absolute;
+      inset: 20px auto auto 20px;
+      pointer-events: none;
+      z-index: 8;
+      font-weight: 700;
+      font-size: 34px;
+      color: transparent;
+      -webkit-text-stroke: 1px rgba(255, 0, 0, 0.85);
+      text-shadow: 0 0 18px rgba(255, 25, 25, 0.18);
+      mix-blend-mode: screen;
+      opacity: 0.95;
+      filter: drop-shadow(0 10px 30px rgba(255, 0, 0, 0.08));
+    }
+
+    .alert .big {
+      display: inline-block;
+      transform: skewX(-6deg);
+      background: linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(255, 80, 80, 0.12));
+      padding: 6px 12px;
+      border-radius: 6px;
+    }
+
+    /* right column (stats, waveform, alerts) */
+    .right {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .card {
+      padding: 10px;
+      background: rgba(255, 255, 255, 0.02);
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.02);
+      color: var(--muted);
+      min-height: 90px;
+    }
+
+    .h-title {
+      font-family: var(--code);
+      font-weight: 700;
+      color: var(--neon);
+      letter-spacing: 1px;
+      margin-bottom: 6px;
+    }
+
+    /* meters */
+    .meter {
+      height: 10px;
+      background: rgba(255, 255, 255, 0.02);
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.02);
+    }
+
+    .meter>i {
+      display: block;
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, rgba(18, 255, 63, 0.22), rgba(18, 255, 63, 0.9));
+      box-shadow: 0 6px 18px rgba(18, 255, 63, 0.08) inset;
+    }
+
+    /* waveform canvas */
+    canvas.wave {
+      width: 100%;
+      height: 80px;
+      border-radius: 6px;
+      background: linear-gradient(180deg, rgba(0, 0, 0, 0.2), rgba(255, 255, 255, 0.01));
+    }
+
+    /* chromatic aberration / glitch layers */
+    .glitch-layer {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      mix-blend-mode: screen;
+      opacity: 0.08;
+    }
+
+    .glitch-layer svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* chroma text effect for important messages */
+    .chroma {
+      position: relative;
+      display: inline-block;
+      color: var(--neon);
+    }
+
+    .chroma::before,
+    .chroma::after {
+      content: attr(data-text);
+      position: absolute;
+      left: 0;
+      top: 0;
+      opacity: 0.7;
+    }
+
+    .chroma::before {
+      color: #ff2b2b;
+      transform: translate(1px, -1px);
+      filter: blur(0.6px);
+      opacity: 0.28;
+    }
+
+    .chroma::after {
+      color: #00f7ff;
+      transform: translate(-1px, 1px);
+      opacity: 0.12;
+      filter: blur(0.8px);
+    }
+
+    /* footer controls */
+    .controls {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .btn {
+      background: transparent;
+      border: 1px solid rgba(18, 255, 63, 0.06);
+      color: var(--muted);
+      padding: 6px 8px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: var(--code);
+    }
+
+    .btn.ghost {
+      border-style: dashed;
+      color: var(--neon);
+    }
+
+    /* large access badge */
+    .badge {
+      font-weight: 800;
+      letter-spacing: 1px;
+      font-size: 13px;
+      padding: 6px 10px;
+      border-radius: 6px;
+      display: inline-block;
+      border: 1px solid rgba(255, 255, 255, 0.02);
+      color: var(--neon);
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.01), rgba(255, 255, 255, 0.00));
+    }
+
+    /* small screens */
+    @media(max-width:1000px) {
+      .shell {
+        grid-template-columns: 1fr;
+        height: 92vh;
+        padding: 8px;
+        gap: 10px;
+      }
+
+      .right {
+        order: 2;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="noise"></div>
+  <div class="scanlines"></div>
+
+  <div class="shell" role="application" aria-label="Hacking simulator">
+    <div class="panel terminal" id="mainTerm">
+      <div class="term-header">
+        <div class="h-title">SYSTEM BREACH — ULTRA</div>
+        <div style="flex:1"></div>
+        <div class="win-dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div>
+      </div>
+
+      <div class="console" id="console" aria-live="polite" tabindex="0"></div>
+
+      <div class="controls">
+        <div>
+          <button id="restart" class="btn">Restart</button>
+          <button id="speed" class="btn ghost">x1</button>
+          <button id="panic" class="btn" title="Trigger full red alert">PANIC</button>
+        </div>
+        <div>
+          <span class="badge" id="sessionBadge">SESSION • —</span>
+        </div>
+      </div>
+
+      <div class="alert" id="alertLayer" aria-hidden="true"><span class="big">! ALERT !</span></div>
+      <!-- glitch layer (subtle) -->
+      <div class="glitch-layer" id="glitchLayer" aria-hidden="true"></div>
+    </div>
+
+    <aside class="panel right" aria-hidden="false">
+      <div class="card">
+        <div class="h-title">TARGETS</div>
+        <div id="targets" style="font-family:var(--code); white-space:pre-wrap; color:var(--muted); font-size:13px">
+          Scanning...</div>
+      </div>
+
+      <div class="card">
+        <div class="h-title">TRANSFER</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <div style="flex:1">
+            <div style="font-size:12px;color:var(--muted);margin-bottom:6px">Overall</div>
+            <div class="meter"><i id="overallMeter"></i></div>
+          </div>
+          <div style="width:70px;text-align:right;">
+            <div id="overallPct" style="font-size:18px;color:var(--neon)">0%</div>
+          </div>
+        </div>
+        <div style="height:8px"></div>
+        <div style="font-size:12px;color:var(--muted);display:flex;justify-content:space-between;">
+          <div id="tStats">0 MB</div>
+          <div id="tSpeed">0 KB/s</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="h-title">SYSTEM</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <div style="flex:1">
+            <div style="font-size:12px;color:var(--muted);margin-bottom:6px">CPU</div>
+            <div class="meter"><i id="cpuMeter"></i></div>
+          </div>
+          <div style="width:50px;text-align:right;color:var(--muted);" id="cpuPct">0%</div>
+        </div>
+        <div style="height:10px"></div>
+        <canvas class="wave" id="wave"></canvas>
+      </div>
+    </aside>
+  </div>
+
+  <!-- matrix + noise canvas (below UI for performance) -->
+  <canvas id="matrix" style="position:fixed; inset:0; z-index:1; pointer-events:none; opacity:0.07;"></canvas>
+
+  <script>
+    /* ------------------ SAFE COSMETIC SCRIPT ------------------
+       This script purely generates random fake output for visuals.
+       IT DOES NOT ACCESS FILES OR NETWORK. Everything is simulated.
+       --------------------------------------------------------- */
+
+    const consoleEl = document.getElementById('console');
+    const targetsEl = document.getElementById('targets');
+    const overallMeter = document.getElementById('overallMeter');
+    const overallPct = document.getElementById('overallPct');
+    const tStats = document.getElementById('tStats');
+    const tSpeed = document.getElementById('tSpeed');
+    const cpuMeter = document.getElementById('cpuMeter');
+    const cpuPct = document.getElementById('cpuPct');
+    const sessionBadge = document.getElementById('sessionBadge');
+    const alertLayer = document.getElementById('alertLayer');
+    const glitchLayer = document.getElementById('glitchLayer');
+    const restartBtn = document.getElementById('restart');
+    const speedBtn = document.getElementById('speed');
+    const panicBtn = document.getElementById('panic');
+
+    let running = false;
+    let speed = 1; // 1 or 3
+    let panicMode = false;
+
+    /* fonts / look: we use VT323 for lines via CSS font-family declared earlier */
+
+    /* utilities */
+    function rnd(min, max) { return Math.floor(min + Math.random() * (max - min + 1)); }
+    function pick(arr) { return arr[rnd(0, arr.length - 1)]; }
+    function ts() { const d = new Date(); return d.toLocaleTimeString(); }
+
+    /* fake data generators */
+    const users = ['root', 'admin', 'operator', 'sys', 'backup', 'shaik', 'svc_agent', 'svc_backup'];
+    const exts = ['.log', '.db', '.key', '.pem', '.enc', '.bak', '.sqlite', '.conf', '.xlsx', '.pdf'];
+    const folders = ['Users', 'Secrets', 'Configs', 'Vault', 'Photos', 'Backups', 'Datastore', 'home'];
+    const domains = ['corpnet', 'vault', 'internal', 'secure', 'exfil', 'gateway', 'nginx', 'fileshare'];
+    function fakeFile() { return `${pick(['passwords', 'keystore', 'identity', 'creds', 'invoices', 'photos', 'db'])}_${rnd(1, 9999)}${pick(exts)}`; }
+    function fakePath() { return `/${pick(folders)}/${pick(users)}/${fakeFile()}`; }
+    function fakeIP() { return `${rnd(10, 255)}.${rnd(0, 255)}.${rnd(0, 255)}.${rnd(0, 255)}`; }
+    function fakeSpeedKB() { return Math.round((50 + Math.random() * 450) * (speed === 3 ? 2 : 1)); }
+
+    /* typed line with human-like pauses */
+    async function writeLine(text, options = { ellipsis: false, strong: false, minDelay: 20, maxDelay: 36 }) {
+      const line = document.createElement('div');
+      line.className = 'line';
+      const time = document.createElement('span');
+      time.className = 'time';
+      time.textContent = `[${ts()}]`;
+      line.appendChild(time);
+      const content = document.createElement('span');
+      content.className = 'content';
+      line.appendChild(content);
+      consoleEl.appendChild(line);
+      consoleEl.scrollTop = consoleEl.scrollHeight;
+
+      // realistic typing speed: vary per character
+      for (let ch of text) {
+        content.textContent += ch;
+        await new Promise(r => setTimeout(r, rnd(options.minDelay / optionsFactor(), options.maxDelay / optionsFactor())));
+        // occasional micro beep simulated by visual flicker (no audio used)
+        if (Math.random() > 0.94) content.style.opacity = '0.84', setTimeout(() => content.style.opacity = '1', 50);
+      }
+      if (options.ellipsis) {
+        const dots = document.createElement('span');
+        dots.className = 'ellipsis';
+        content.appendChild(dots);
+        let d = 0;
+        const int = setInterval(() => { d = (d + 1) % 4; dots.textContent = '.'.repeat(d); }, 380 / speed);
+        // stop ellipsis later if caller wants
+        return { node: line, stop: () => clearInterval(int) };
+      }
+      return { node: line };
+    }
+
+    /* speed factor */
+    function optionsFactor() { return speed === 3 ? 2.8 : 1; }
+
+    /* clear console safely */
+    function clearConsole() { consoleEl.innerHTML = ''; }
+
+    /* matrix canvas (large) */
+    (function matrix() {
+      const c = document.getElementById('matrix');
+      const ctx = c.getContext('2d');
+      function resize() { c.width = innerWidth; c.height = innerHeight; cols = Math.floor(c.width / 14); drops = Array.from({ length: cols }, _ => rnd(0, 100)); }
+      let cols, drops;
+      resize(); window.addEventListener('resize', resize);
+      function frame() {
+        ctx.fillStyle = 'rgba(0,0,0,0.06)';
+        ctx.fillRect(0, 0, c.width, c.height);
+        ctx.fillStyle = '#09ff2a';
+        ctx.font = '14px VT323, monospace';
+        for (let i = 0; i < cols; i++) {
+          const char = String.fromCharCode(0x30A0 + Math.random() * 96);
+          ctx.fillText(char, i * 14, drops[i] * 14);
+          if (Math.random() > 0.985) drops[i] = 0;
+          drops[i]++;
+        }
+        requestAnimationFrame(frame);
+      }
+      frame();
+    })();
+
+    /* small waveform on right (canvas) */
+    (function wave() {
+      const canvas = document.getElementById('wave');
+      const ctx = canvas.getContext('2d');
+      function resize() { canvas.width = canvas.clientWidth * devicePixelRatio; canvas.height = canvas.clientHeight * devicePixelRatio; ctx.scale(devicePixelRatio, devicePixelRatio); }
+      resize(); window.addEventListener('resize', resize);
+      let t = 0;
+      function draw() {
+        const w = canvas.clientWidth, h = canvas.clientHeight;
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = 'rgba(0,0,0,0.12)'; ctx.fillRect(0, 0, w, h);
+        ctx.beginPath();
+        for (let x = 0; x < w; x++) {
+          const y = h / 2 + Math.sin((x / 10) + t) * (h / 3) * Math.sin(t / 3) * (0.4 + Math.random() * 0.6);
+          ctx.lineTo(x, y);
+        }
+        ctx.strokeStyle = 'rgba(18,255,63,0.9)'; ctx.lineWidth = 1.8; ctx.stroke();
+        t += 0.08 + Math.random() * 0.06;
+        requestAnimationFrame(draw);
+      }
+      draw();
+    })();
+
+    /* glitch SVG layer generator */
+    function makeGlitch() {
+      glitchLayer.innerHTML = '';
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('viewBox', '0 0 1200 600');
+      svg.setAttribute('preserveAspectRatio', 'none');
+      // create some colored bands
+      for (let i = 0; i < 6; i++) {
+        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect.setAttribute('x', '0');
+        rect.setAttribute('y', (i * 100).toString());
+        rect.setAttribute('width', '100%');
+        rect.setAttribute('height', '20');
+        rect.setAttribute('fill', i % 2 ? 'rgba(255,0,30,0.05)' : 'rgba(0,180,255,0.02)');
+        svg.appendChild(rect);
+      }
+      glitchLayer.appendChild(svg);
+    }
+
+    /* main sequence */
+    async function run() {
+      running = true;
+      panicMode = false;
+      makeGlitch();
+      clearConsole();
+      sessionBadge.textContent = 'SESSION • INIT';
+      overallMeter.style.width = '0%'; overallPct.textContent = '0%';
+      cpuMeter.style.width = '0%'; cpuPct.textContent = '0%';
+      tStats.textContent = '0 MB'; tSpeed.textContent = '0 KB/s';
+
+      // fake session meta
+      const sid = `SID-${rnd(100000, 999999)}`;
+      const op = pick(users);
+      sessionBadge.textContent = `SESSION • ${sid}`;
+
+      await writeLine('--- [ SSH BANNER ] ---', { minDelay: 6, maxDelay: 12 });
+      await writeLine(`OpenSSH_8.9p1 Debian-... (protocol 2.0)`, { minDelay: 6, maxDelay: 12 });
+      await new Promise(r => setTimeout(r, 350 / speed));
+      await writeLine(`Authenticating as ${op}@${pick(domains)}...`, { minDelay: 8, maxDelay: 28, ellipsis: true });
+      await new Promise(r => setTimeout(r, 1200 / speed));
+      await writeLine('Authentication: [ OK ]', { minDelay: 6, maxDelay: 18 });
+
+      // discover targets
+      await writeLine('Performing network sweep...', { minDelay: 8, maxDelay: 20, ellipsis: true });
+      const targets = Array.from({ length: rnd(4, 8) }, (_, i) => ({ ip: fakeIP(), id: `TGT-${rnd(1000, 9999)}`, label: `${pick(domains)}-${rnd(1, 99)}` }));
+      await new Promise(r => setTimeout(r, 900 / speed));
+      for (const t of targets) {
+        await writeLine(`Host discovered: ${t.ip} (${t.label})`, { minDelay: 6, maxDelay: 16 });
+        await new Promise(r => setTimeout(r, 120 / speed));
+      }
+      targetsEl.textContent = targets.map(t => `${t.id} • ${t.ip} • ${t.label}`).join('\n');
+
+      // scanning and collecting
+      await writeLine('Enumerating file system indices...', { minDelay: 8, maxDelay: 20, ellipsis: true });
+      const totalFiles = rnd(40, 140);
+      let scanned = 0;
+      for (let i = 0; i < totalFiles; i++) {
+        const path = fakePath();
+        await writeLine(`scanning ${path}`, { minDelay: 4, maxDelay: 18 });
+        scanned++;
+        // occasionally "sensitive"
+        if (Math.random() > 0.82) {
+          await writeLine(`! SENSITIVE FOUND: ${fakeFile()} (encrypted)`, { minDelay: 4, maxDelay: 14 });
+        }
+        // update overall meter
+        const pct = Math.round(scanned / totalFiles * 100);
+        overallMeter.style.width = pct + '%'; overallPct.textContent = pct + '%';
+        tStats.textContent = `${Math.round(scanned * 0.7)} MB`;
+        tSpeed.textContent = `${fakeSpeedKB()} KB/s`;
+        // CPU jitter
+        const cpu = rnd(10, 85 + Math.floor(Math.random() * 15));
+        cpuMeter.style.width = Math.min(100, cpu) + '%'; cpuPct.textContent = Math.min(100, cpu) + '%';
+        await new Promise(r => setTimeout(r, rnd(500, 1400) / speed));
+      }
+
+      // exfiltration
+      await writeLine('Establishing covert tunnel to remote exfil server...', { minDelay: 10, maxDelay: 26, ellipsis: true });
+      await new Promise(r => setTimeout(r, 900 / speed));
+      await writeLine('Tunnel: [ ESTABLISHED ]', { minDelay: 6, maxDelay: 14 });
+      // simulated upload chunks
+      const totalMB = rnd(120, 520);
+      let sent = 0;
+      while (sent < totalMB) {
+        const chunk = rnd(2, 18);
+        sent += chunk;
+        if (sent > totalMB) sent = totalMB;
+        const pct = Math.round(sent / totalMB * 100);
+        overallMeter.style.width = pct + '%'; overallPct.textContent = pct + '%';
+        tStats.textContent = `${sent} / ${totalMB} MB`;
+        tSpeed.textContent = `${fakeSpeedKB()} KB/s`;
+        await writeLine(`Uploading chunk: ${chunk}MB -> ${pct}%`, { minDelay: 6, maxDelay: 16 });
+        // dramatic occasional warning
+        if (Math.random() > 0.9) {
+          await writeLine('WARN: anomaly detected on route - rerouting...', { minDelay: 6, maxDelay: 18 });
+        }
+        await new Promise(r => setTimeout(r, rnd(300, 1200) / speed));
+      }
+
+      await writeLine('All payloads delivered.', { minDelay: 8, maxDelay: 18 });
+      await new Promise(r => setTimeout(r, 500 / speed));
+      await writeLine('Sanitizing traces...', { minDelay: 8, maxDelay: 24, ellipsis: true });
+      await new Promise(r => setTimeout(r, 900 / speed));
+      await writeLine('Operation complete — destroying session state.', { minDelay: 6, maxDelay: 14 });
+      await new Promise(r => setTimeout(r, 400 / speed));
+
+      // final flourish: red alert flash & cinematic banner
+      if (Math.random() > 0.4 || panicMode) {
+        showAlert();
+        for (let i = 0; i < 3; i++) {
+          await writeLine('!!! ALERT: INTRUSION SIGNATURE GENERATED !!!', { minDelay: 6, maxDelay: 14 });
+          await new Promise(r => setTimeout(r, 300 / speed));
+        }
+      }
+      running = false;
+    }
+
+    /* ALERT visuals */
+    function showAlert() {
+      alertLayer.style.opacity = '1';
+      alertLayer.style.transform = 'translateY(0)';
+      alertLayer.style.transition = 'none';
+      alertLayer.setAttribute('aria-hidden', 'false');
+      // temporary intense glitch
+      glitchLayer.style.opacity = '0.12';
+      setTimeout(() => { glitchLayer.style.opacity = '0.06'; }, 4200);
+    }
+
+    /* controls */
+    restartBtn.addEventListener('click', () => { if (!running) run(); else { panicMode = true; showAlert(); } });
+    speedBtn.addEventListener('click', () => { speed = speed === 1 ? 3 : 1; speedBtn.textContent = speed === 1 ? 'x1' : 'x3'; });
+    panicBtn.addEventListener('click', () => { panicMode = true; showAlert(); });
+
+    /* initial run */
+    run();
+
+    /* accessibility: allow restart with R key, panic with P */
+    window.addEventListener('keydown', (e) => {
+      if (e.key.toLowerCase() === 'r') { if (!running) run(); else { panicMode = true; showAlert(); } }
+      if (e.key.toLowerCase() === 'p') { panicMode = true; showAlert(); }
+    });
+
+    /* small auto-refresh of glitch layer periodically for motion */
+    setInterval(() => { makeGlitch(); }, 4200);
+  </script>
+</body>
+
+</html>
